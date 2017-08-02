@@ -6,10 +6,16 @@ const readline = require('readline');
 const {readFileSync} = require('fs');
 const {join: pathJoin } = require('path');
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
+let rl;
+
+createRl = () => {
+  rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+};
+
+createRl();
 
 Promise.longStackTraces();
 
@@ -37,7 +43,10 @@ try {
     defaultLabels: [],
     owner: '<GITHUB_USER_OR_ORG>', repo: '<GITHUB_REPO_NAME>',
     defaultState: 'closed',
-    defaultAssignees: []
+    defaultAssignees: [],
+    assigneeAliases: {
+      'alias': 'user'
+    }
   }, null, 2));
   process.exit(1);
 }
@@ -49,45 +58,95 @@ github.authenticate({
 
 const api = new ZenHub(config.zenhubToken);
 
-const {owner, repo} = config;
+const {owner, repo, defaultAssignees, assigneeAliases, defaultState} = config;
   
-const question = prompt => new Promise(resolve => rl.question(prompt, resolve));
+const simpleQuestion = prompt => new Promise(resolve => rl.question(prompt, resolve));
+  
+const question = (prompt, opts = {}) => { 
+  return simpleQuestion(`${prompt}${opts.default ? ` (${opts.default})` : ''}: `).then(answer => {
+    if(answer.length === 0) {
+      return opts.default || question(prompt, opts);
+    }
+    return answer;
+  });
+};
 
-  
-github.repos.get({
+const multiline = prompt => new Promise(resolve => {
+  const input = [];
+  console.log(prompt);
+  rl.prompt(true);
+  lineHandler = cmd => {
+    input.push(cmd);
+    rl.prompt();
+  };
+  rl.on('line', lineHandler);
+  rl.once('close', cmd => {
+    resolve(input.join('\n'));
+    createRl();
+  });
+});
+
+const repoIdPromise = github.repos.get({
   owner, repo
-}).then(status => {
-  const repoId = status.data.id;
+}).get('data').get('id');
+
+function mapAliases(rawAssignees) {
+  return rawAssignees.map(assignee => {
+    return (assigneeAliases || {})[assignee] || assignee;
+  });
+}
   
-  return Promise.mapSeries([
-    () => process.argv[2] || question('Points: '),
-    () => process.argv[3] || question('Issue title: '),
-    () => process.argv[4] || question('Issue text: '),
-  ], f => f()).spread((points, issueTitle, issueText) => {
-    return github.issues.create({
+  
+return Promise.mapSeries([
+  () => process.argv[2] || question(`Points`, {default: 1}),
+  () => process.argv[3] || question('Issue title'),
+  () => process.argv[4] || multiline('Issue text (press Ctrl+D to finish typing)'),
+  () => process.argv[5] || question(`Assignees`, {default: defaultAssignees && defaultAssignees.length && mapAliases(defaultAssignees).join(' ') }),
+  () => process.argv[6] || question(`State`, {default: defaultState || 'open'}),
+  () => repoIdPromise
+], f => f()).spread((points, issueTitle, issueText, assigneesText, state, repoId) => {    
+  const rawAssignees = assigneesText && assigneesText.split(/(?:\s+|,)/) || defaultAssignees;
+  const assignees = mapAliases(rawAssignees);
+  
+  points = points || 1;
+  state = state || defaultState || 'open';
+
+  if(process.env.DEBUG_ISSUE_CREATE) {
+    console.log({
+      state,
       owner, repo,
       title: issueTitle,
       body: issueText,
-      assignees: config.defaultAssignees,
-      labels: config.defaultLabels
-    }).then(status => {
-      const issueNumber = status.data.number;
-      
-      return api.setEstimate({
+      assignees,
+      labels: config.defaultLabels,
+      points
+    });
+    process.exit(1);
+  }
+
+  return github.issues.create({
+    owner, repo,
+    title: issueTitle,
+    body: issueText,
+    assignees,
+    labels: config.defaultLabels
+  }).then(status => {
+    const issueNumber = status.data.number;
+    
+    return Promise.all([
+      api.setEstimate({
         repo_id: repoId,
         issue_number: issueNumber,
         body: {
           estimate: parseInt(points)
         }
-      }).then(() => {
-        return github.issues.edit({
-          owner, repo,
-          number: issueNumber,
-          state: config.defaultState || 'open'
-        })
-      }).then(() => issueNumber);
-    });
-    
+      }),
+      github.issues.edit({
+        owner, repo,
+        number: issueNumber,
+        state: config.defaultState || 'open'
+      })
+    ]).then(() => issueNumber);
   });
 }).then(issueNumber => {
   console.log(`https://github.com/${config.owner}/${config.repo}/issues/${issueNumber}`);
