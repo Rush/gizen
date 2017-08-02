@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const Promise = require('bluebird');
 const GitHubApi = require("github");
 
@@ -27,7 +28,8 @@ let config;
 try {
   config = JSON.parse(readFileSync(pathJoin(process.env.HOME, '.gizen')));
 } catch(err) {  
-  console.error(err);
+  console.error(err.message);
+  console.error('');
   console.error('Please create valid JSON file at ~/.gizen containing');
   console.error(JSON.stringify({
     githubToken: '<GITHUB_TOKEN>',
