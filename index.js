@@ -144,7 +144,7 @@ return Promise.mapSeries([
       github.issues.edit({
         owner, repo,
         number: issueNumber,
-        state: config.defaultState || 'open'
+        state
       })
     ]).then(() => issueNumber);
   });
