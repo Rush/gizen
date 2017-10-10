@@ -41,10 +41,13 @@ try {
     }
     return !config;
   });
-} catch(err) {  
+  if(!config) {
+    throw new Error("Could not find the .gizen file!");
+  }
+} catch(err) {
   console.error(err.message);
   console.error('');
-  console.error('Please create valid JSON file at ~/.gizen containing');
+  console.error('Please create valid JSON file at ~/.gizen or ./.gizen containing');
   console.error(JSON.stringify({
     githubToken: '<GITHUB_TOKEN>',
     zenhubToken: '<ZENHUB_TOKEN>',
