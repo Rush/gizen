@@ -3,7 +3,7 @@ const Promise = require('bluebird');
 const GitHubApi = require("github");
 
 const readline = require('readline');
-const {readFileSync} = require('fs');
+const {readFileSync, existsSync} = require('fs');
 const {join: pathJoin } = require('path');
 
 let rl;
@@ -31,8 +31,16 @@ var github = new GitHubApi({
 const ZenHub = require('zenhub-api');
   
 let config;
+const foldersToSearch = ['./', process.env.HOME];
+
 try {
-  config = JSON.parse(readFileSync(pathJoin(process.env.HOME, '.gizen')));
+  foldersToSearch.every((folder) => {
+    const fileName = pathJoin(folder, '.gizen');
+    if (existsSync(fileName)) {
+      config = JSON.parse(readFileSync(fileName));
+    }
+    return !config;
+  });
 } catch(err) {  
   console.error(err.message);
   console.error('');
