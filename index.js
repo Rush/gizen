@@ -3,7 +3,7 @@ const Promise = require('bluebird');
 const GitHubApi = require("github");
 
 const readline = require('readline');
-const {readFileSync} = require('fs');
+const {readFileSync, existsSync} = require('fs');
 const {join: pathJoin } = require('path');
 
 let rl;
@@ -31,12 +31,23 @@ var github = new GitHubApi({
 const ZenHub = require('zenhub-api');
   
 let config;
+const foldersToSearch = ['./', process.env.HOME];
+
 try {
-  config = JSON.parse(readFileSync(pathJoin(process.env.HOME, '.gizen')));
-} catch(err) {  
+  foldersToSearch.every((folder) => {
+    const fileName = pathJoin(folder, '.gizen');
+    if (existsSync(fileName)) {
+      config = JSON.parse(readFileSync(fileName));
+    }
+    return !config;
+  });
+  if(!config) {
+    throw new Error("Could not find the .gizen file!");
+  }
+} catch(err) {
   console.error(err.message);
   console.error('');
-  console.error('Please create valid JSON file at ~/.gizen containing');
+  console.error('Please create valid JSON file at ~/.gizen or ./.gizen containing');
   console.error(JSON.stringify({
     githubToken: '<GITHUB_TOKEN>',
     zenhubToken: '<ZENHUB_TOKEN>',
